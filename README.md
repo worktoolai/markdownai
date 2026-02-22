@@ -21,6 +21,12 @@ The recommended workflow: `toc` → identify section → `read --section` → wo
 ## Install
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/worktoolai/markdownai/main/install.sh | sh
+```
+
+Or build from source:
+
+```bash
 cargo install --path .
 ```
 
