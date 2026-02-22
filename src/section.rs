@@ -59,7 +59,7 @@ impl SectionAddress {
 impl std::fmt::Display for SectionAddress {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SectionAddress::Index(idx) => write!(f, "#{}", idx),
+            SectionAddress::Index(idx) => write!(f, "{}", idx),
             SectionAddress::HeaderPath(parts) => {
                 write!(f, "{}", parts.join(" > "))
             }
@@ -185,23 +185,24 @@ fn try_parse_line_range(addr: &str) -> Result<SectionAddress> {
 ///
 /// Formats: "#1.1", "#1.1.2", "1.1", "1.1.2"
 fn try_parse_index(addr: &str) -> Result<String> {
-    let addr = addr.trim_start_matches('#');
+    let stripped = addr.trim_start_matches('#');
 
     // Must match pattern like "1", "1.1", "1.2.3", etc.
     let index_re = regex::Regex::new(r"^\d+(?:\.\d+)*$").unwrap();
 
-    if !index_re.is_match(addr) {
+    if !index_re.is_match(stripped) {
         bail!("Not a valid index format");
     }
 
     // Validate no leading zeros in segments
-    for segment in addr.split('.') {
+    for segment in stripped.split('.') {
         if segment.len() > 1 && segment.starts_with('0') {
             bail!("Index segments should not have leading zeros: {}", segment);
         }
     }
 
-    Ok(addr.to_string())
+    // Preserve '#' prefix to match Section.index format (e.g., "#1.1")
+    Ok(format!("#{}", stripped))
 }
 
 /// Try to parse a header path address.
@@ -741,11 +742,11 @@ mod tests {
     fn test_parse_index() {
         assert_eq!(
             parse_section_address("#1.1").unwrap(),
-            SectionAddress::Index("1.1".to_string())
+            SectionAddress::Index("#1.1".to_string())
         );
         assert_eq!(
             parse_section_address("1.2.3").unwrap(),
-            SectionAddress::Index("1.2.3".to_string())
+            SectionAddress::Index("#1.2.3".to_string())
         );
     }
 
@@ -800,7 +801,7 @@ mod tests {
     fn test_parse_single_index() {
         assert_eq!(
             parse_section_address("#1").unwrap(),
-            SectionAddress::Index("1".to_string())
+            SectionAddress::Index("#1".to_string())
         );
     }
 
@@ -808,7 +809,7 @@ mod tests {
     fn test_parse_deep_index() {
         assert_eq!(
             parse_section_address("1.2.3.4").unwrap(),
-            SectionAddress::Index("1.2.3.4".to_string())
+            SectionAddress::Index("#1.2.3.4".to_string())
         );
     }
 
@@ -949,7 +950,7 @@ mod tests {
 
     #[test]
     fn test_section_address_display() {
-        let idx = SectionAddress::Index("1.1".to_string());
+        let idx = SectionAddress::Index("#1.1".to_string());
         assert_eq!(format!("{}", idx), "#1.1");
         let lr = SectionAddress::LineRange(10, 25);
         assert_eq!(format!("{}", lr), "L10-L25");
@@ -959,7 +960,7 @@ mod tests {
 
     #[test]
     fn test_section_address_predicates() {
-        let idx = SectionAddress::Index("1".to_string());
+        let idx = SectionAddress::Index("#1".to_string());
         assert!(idx.is_index());
         assert!(!idx.is_line_range());
         assert!(!idx.is_header_path());
