@@ -13,7 +13,7 @@ use std::path::Path;
 
 use anyhow::{bail, Context, Result};
 use clap::Parser;
-use walkdir::WalkDir;
+use ignore::WalkBuilder;
 
 use cli::{Cli, Commands};
 
@@ -247,8 +247,14 @@ fn run_tree(args: &cli::TreeArgs, json: bool, pretty: bool, stats: bool) -> Resu
         let mut total_lines = 0usize;
         let mut total_sections = 0usize;
 
-        for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
-            if entry.path().extension().and_then(|e| e.to_str()) == Some("md") && entry.file_type().is_file() {
+        for entry in walk_entries_respecting_gitignore(path)? {
+            if entry
+                .path()
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|ext| ext.eq_ignore_ascii_case("md"))
+                .unwrap_or(false)
+            {
                 files += 1;
                 if let Ok(content) = std::fs::read_to_string(entry.path()) {
                     total_bytes += content.len();
@@ -276,33 +282,94 @@ fn run_tree(args: &cli::TreeArgs, json: bool, pretty: bool, stats: bool) -> Resu
     }
 
     let max_depth = args.depth.unwrap_or(usize::MAX);
-    let walker = WalkDir::new(path).max_depth(max_depth);
 
     if json {
         let mut entries: Vec<serde_json::Value> = Vec::new();
-        for entry in walker.into_iter().filter_map(|e| e.ok()) {
+        let mut builder = WalkBuilder::new(path);
+        builder
+            .hidden(false)
+            .ignore(true)
+            .git_ignore(true)
+            .git_global(true)
+            .git_exclude(true)
+            .parents(true)
+            .require_git(false)
+            .max_depth(Some(max_depth));
+
+        for entry in builder.build() {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
             let p = entry.path();
-            if args.files_only && !p.is_file() { continue; }
-            if p.extension().and_then(|e| e.to_str()) != Some("md") && p.is_file() { continue; }
+            if path_has_ignored_runtime_dir(p) {
+                continue;
+            }
+            let is_file = entry
+                .file_type()
+                .map(|ft| ft.is_file())
+                .unwrap_or(false);
+            if args.files_only && !is_file {
+                continue;
+            }
+            if is_file
+                && p
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|ext| !ext.eq_ignore_ascii_case("md"))
+                    .unwrap_or(true)
+            {
+                continue;
+            }
             let rel = p.strip_prefix(path).unwrap_or(p);
             entries.push(serde_json::json!({
                 "path": rel.display().to_string(),
-                "type": if p.is_dir() { "dir" } else { "file" },
+                "type": if is_file { "file" } else { "dir" },
             }));
         }
         println!("{}", output::to_json(&entries, pretty));
     } else if args.count {
-        let count = WalkDir::new(path).into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().and_then(|ext| ext.to_str()) == Some("md") && e.file_type().is_file())
+        let count = walk_entries_respecting_gitignore(path)?
+            .into_iter()
+            .filter(|e| {
+                e.path()
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .map(|ext| ext.eq_ignore_ascii_case("md"))
+                    .unwrap_or(false)
+            })
             .count();
         println!("{} markdown files", count);
     } else {
-        for entry in walker.into_iter().filter_map(|e| e.ok()) {
+        let mut builder = WalkBuilder::new(path);
+        builder
+            .hidden(false)
+            .ignore(true)
+            .git_ignore(true)
+            .git_global(true)
+            .git_exclude(true)
+            .parents(true)
+            .require_git(false)
+            .max_depth(Some(max_depth));
+
+        for entry in builder.build() {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
             let p = entry.path();
-            if args.files_only && !p.is_file() { continue; }
+            if path_has_ignored_runtime_dir(p) {
+                continue;
+            }
+            let is_file = entry
+                .file_type()
+                .map(|ft| ft.is_file())
+                .unwrap_or(false);
+            if args.files_only && !is_file {
+                continue;
+            }
             let rel = p.strip_prefix(path).unwrap_or(p);
-            let depth = entry.depth();
+            let depth = rel.components().count();
             let indent = "  ".repeat(depth);
             println!("{}{}", indent, rel.display());
         }
@@ -386,24 +453,78 @@ fn run_search(
     Ok(0)
 }
 
+const RUNTIME_IGNORED_DIRS: &[&str] = &[".worktoolai"];
+
 fn collect_md_files(input: &str) -> Result<Vec<String>> {
     if input == "-" {
         return Ok(vec!["-".to_string()]);
     }
+
     let path = Path::new(input);
     if path.is_file() {
         return Ok(vec![input.to_string()]);
     }
+
     if path.is_dir() {
         let mut files = Vec::new();
-        for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
-            if entry.path().extension().and_then(|e| e.to_str()) == Some("md") && entry.file_type().is_file() {
+        for entry in walk_entries_respecting_gitignore(path)? {
+            if entry
+                .path()
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|ext| ext.eq_ignore_ascii_case("md"))
+                .unwrap_or(false)
+            {
                 files.push(entry.path().to_string_lossy().to_string());
             }
         }
         return Ok(files);
     }
+
     bail!("Input '{}' is not a file or directory", input);
+}
+
+fn walk_entries_respecting_gitignore(root: &Path) -> Result<Vec<ignore::DirEntry>> {
+    let mut entries = Vec::new();
+
+    let mut builder = WalkBuilder::new(root);
+    builder
+        .hidden(false)
+        .ignore(true)
+        .git_ignore(true)
+        .git_global(true)
+        .git_exclude(true)
+        .parents(true)
+        .require_git(false);
+
+    for entry in builder.build() {
+        let entry = entry.with_context(|| format!("Failed to walk {}", root.display()))?;
+        if !entry
+            .file_type()
+            .map(|file_type| file_type.is_file())
+            .unwrap_or(false)
+        {
+            continue;
+        }
+
+        if path_has_ignored_runtime_dir(entry.path()) {
+            continue;
+        }
+
+        entries.push(entry);
+    }
+
+    Ok(entries)
+}
+
+fn path_has_ignored_runtime_dir(path: &Path) -> bool {
+    path.components().any(|component| {
+        component
+            .as_os_str()
+            .to_str()
+            .map(|name| RUNTIME_IGNORED_DIRS.contains(&name))
+            .unwrap_or(false)
+    })
 }
 
 fn count_matches_in_files(files: &[String], query: &str) -> Result<usize> {
@@ -918,5 +1039,50 @@ fn read_input(file: &str) -> Result<String> {
         Ok(buf)
     } else {
         std::fs::read_to_string(file).with_context(|| format!("Failed to read {}", file))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{collect_md_files, path_has_ignored_runtime_dir};
+    use std::fs;
+    use std::path::Path;
+    use tempfile::tempdir;
+
+    #[test]
+    fn collect_md_files_respects_gitignore() {
+        let temp = tempdir().unwrap();
+
+        fs::write(temp.path().join(".gitignore"), "ignored/\n").unwrap();
+        fs::create_dir(temp.path().join("ignored")).unwrap();
+        fs::write(temp.path().join("ignored/hidden.md"), "# hidden\n").unwrap();
+        fs::write(temp.path().join("keep.md"), "# keep\n").unwrap();
+
+        let files = collect_md_files(temp.path().to_str().unwrap()).unwrap();
+
+        assert_eq!(files.len(), 1);
+        assert!(files[0].ends_with("keep.md"));
+        assert!(!files.iter().any(|f| f.ends_with("ignored/hidden.md")));
+    }
+
+    #[test]
+    fn collect_md_files_ignores_worktoolai() {
+        let temp = tempdir().unwrap();
+
+        fs::create_dir(temp.path().join(".worktoolai")).unwrap();
+        fs::write(temp.path().join(".worktoolai/hidden.md"), "# hidden\n").unwrap();
+        fs::write(temp.path().join("keep.md"), "# keep\n").unwrap();
+
+        let files = collect_md_files(temp.path().to_str().unwrap()).unwrap();
+
+        assert_eq!(files.len(), 1);
+        assert!(files[0].ends_with("keep.md"));
+        assert!(!files.iter().any(|f| f.contains("/.worktoolai/")));
+    }
+
+    #[test]
+    fn path_runtime_ignore_detects_worktoolai_component() {
+        assert!(path_has_ignored_runtime_dir(Path::new("a/.worktoolai/b.md")));
+        assert!(!path_has_ignored_runtime_dir(Path::new("a/worktoolai/b.md")));
     }
 }
