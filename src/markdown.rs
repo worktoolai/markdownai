@@ -27,6 +27,7 @@ pub struct Section {
 
 impl Section {
     /// Create a new section.
+    #[allow(dead_code)]
     pub fn new(
         index: String,
         level: u8,

@@ -82,6 +82,7 @@ pub struct IndexStatus {
 
 /// Section data from the database (includes file_id).
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct DbSection {
     /// Database ID
     pub id: i64,
@@ -114,6 +115,7 @@ pub struct DbSection {
 
 /// Link data from the database.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct DbLink {
     /// Database ID
     pub id: i64,
@@ -146,6 +148,7 @@ pub struct DbLink {
 
 /// Frontmatter field from the database.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct DbFrontmatterField {
     /// Database ID
     pub id: i64,
@@ -618,6 +621,7 @@ impl Database {
     /// # Arguments
     ///
     /// * `rel_path` - Relative path from project root
+    #[allow(dead_code)]
     pub fn get_backlinks(&self, rel_path: &str) -> Result<Vec<DbLink>> {
         let mut stmt = self.conn.prepare(
             "SELECT l.id, l.source_file_id, l.source_line, l.target_raw, l.target_path,
@@ -678,6 +682,7 @@ impl Database {
     /// Get all links in the database for graph building.
     ///
     /// Returns tuples of (source_file_path, DbLink).
+    #[allow(dead_code)]
     pub fn get_all_links(&self) -> Result<Vec<(String, DbLink)>> {
         let mut stmt = self.conn.prepare(
             "SELECT f.path as source_path,
@@ -810,11 +815,13 @@ impl Database {
     }
 
     /// Get the database path.
+    #[allow(dead_code)]
     pub fn db_path(&self) -> &Path {
         &self.db_path
     }
 
     /// Get the project root path.
+    #[allow(dead_code)]
     pub fn root(&self) -> &Path {
         &self.root
     }
@@ -905,7 +912,7 @@ mod tests {
             },
         ];
         
-        let content_hash = Database::compute_hash(b"# Introduction\n## Background\n");
+        let _content_hash = Database::compute_hash(b"# Introduction\n## Background\n");
         let result = db.sync_file("test.md", "# Introduction\n## Background\n", &sections, &[], None);
         assert!(result.is_ok());
         
@@ -1061,7 +1068,7 @@ mod tests {
         std::fs::create_dir_all(temp_dir.join(".git")).unwrap();
         
         let db = Database::open(&temp_dir).unwrap();
-        let old_hash = Database::compute_hash(b"old content");
+        let _old_hash = Database::compute_hash(b"old content");
         let new_hash = Database::compute_hash(b"new content");
         
         // Sync with old content

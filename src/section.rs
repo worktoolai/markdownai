@@ -824,7 +824,7 @@ mod tests {
 
     #[test]
     fn test_read_section_content() {
-        use crate::markdown::{parse_document, Section};
+        use crate::markdown::parse_document;
         let content = "# Header\n\nContent line 1\nContent line 2\n\n## Sub\n\nSub content\n";
         let doc = parse_document(content);
         let section = &doc.sections[0];

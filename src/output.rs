@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! JSON envelope output and raw markdown output formatting.
 //!
 //! This module follows the jsonai output.rs pattern adapted for markdown:

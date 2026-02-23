@@ -50,7 +50,7 @@ pub struct SearchHit {
 /// Full-text search engine for markdown content.
 pub struct SearchEngine {
     index: Index,
-    schema: Schema,
+    _schema: Schema,
     path_field: Field,
     section_index_field: Field,
     section_title_field: Field,
@@ -83,7 +83,7 @@ impl SearchEngine {
 
         Ok(SearchEngine {
             index,
-            schema,
+            _schema: schema,
             path_field,
             section_index_field,
             section_title_field,
@@ -407,15 +407,15 @@ mod tests {
         engine.index_file("/test/file.md", &sections, 0).expect("Failed to index");
         
         // Verify indexed
-        let (hits, total) = engine.search(
-            "content", 
-            &crate::cli::MatchMode::Text, 
-            &crate::cli::SearchScope::All, 
-            10, 
+        let (_hits, total) = engine.search(
+            "content",
+            &crate::cli::MatchMode::Text,
+            &crate::cli::SearchScope::All,
+            10,
             0
         ).expect("Search failed");
         assert_eq!(total, 2);
-        
+
         // Remove the file
         engine.remove_file("/test/file.md").expect("Failed to remove file");
         
@@ -570,7 +570,7 @@ mod tests {
         assert!(hits.iter().any(|h| h.file == "/doc2.md"));
         
         // Search all files
-        let (hits, total) = engine.search(
+        let (_hits, total) = engine.search(
             "content", 
             &crate::cli::MatchMode::Text, 
             &crate::cli::SearchScope::All, 
