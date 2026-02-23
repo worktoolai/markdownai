@@ -388,6 +388,44 @@ impl OverviewEntry {
 }
 
 // ---------------------------------------------------------------------------
+// Chars (Unicode script) output
+// ---------------------------------------------------------------------------
+
+/// Per-script character count.
+#[derive(Serialize, Clone)]
+pub struct ScriptCount {
+    pub script: String,
+    pub count: usize,
+    pub pct: f64,
+}
+
+/// Character statistics for a single file.
+#[derive(Serialize, Clone)]
+pub struct CharsResult {
+    pub file: String,
+    pub total: usize,
+    pub scripts: Vec<ScriptCount>,
+}
+
+impl CharsResult {
+    /// Format in raw mode.
+    /// `file: total N | Hangul 98.2%(1200) Latin 1.5%(18)`
+    pub fn format_raw(&self) -> String {
+        let script_parts: Vec<String> = self
+            .scripts
+            .iter()
+            .map(|s| format!("{} {:.1}%({})", s.script, s.pct, s.count))
+            .collect();
+        format!(
+            "{}: total {} | {}",
+            self.file,
+            self.total,
+            script_parts.join(" ")
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Search results
 // ---------------------------------------------------------------------------
 

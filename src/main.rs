@@ -59,6 +59,7 @@ fn run(cli: Cli) -> Result<i32> {
         Commands::SectionAdd(args) => run_section_add(&args),
         Commands::SectionDelete(args) => run_section_delete(&args),
         Commands::FrontmatterSet(args) => run_frontmatter_set(&args),
+        Commands::Chars(args) => run_chars(&args, json, pretty),
         Commands::Index(args) => run_index(&args, json, pretty),
     }
 }
@@ -1054,6 +1055,108 @@ fn run_frontmatter_set(args: &cli::FrontmatterSetArgs) -> Result<i32> {
         &args.file, &args.key, &args.value,
         args.output.as_deref(), args.dry_run,
     )?;
+
+    Ok(0)
+}
+
+fn run_chars(args: &cli::CharsArgs, json: bool, pretty: bool) -> Result<i32> {
+    use pulldown_cmark::{Event, Tag, TagEnd};
+    use std::collections::HashMap;
+    use unicode_script::{Script, UnicodeScript};
+
+    let files = collect_md_files(&args.input)?;
+    if files.is_empty() {
+        return Ok(1);
+    }
+
+    /// Extract body text from markdown, excluding code blocks and frontmatter.
+    fn extract_body_text(content: &str) -> String {
+        // Strip frontmatter
+        let body = match frontmatter::parse_frontmatter(content) {
+            Some(fm) => {
+                // Skip past the frontmatter (--- ... ---)
+                let raw = &fm.raw_yaml;
+                let fm_block = format!("---\n{}---", raw);
+                content.strip_prefix(&fm_block).unwrap_or(content)
+            }
+            None => content,
+        };
+
+        let parser = pulldown_cmark::Parser::new(body);
+        let mut text = String::new();
+        let mut in_code = false;
+
+        for event in parser {
+            match event {
+                Event::Start(Tag::CodeBlock(_)) => in_code = true,
+                Event::End(TagEnd::CodeBlock) => in_code = false,
+                Event::Code(_) => {} // inline code — skip
+                Event::Text(t) if !in_code => text.push_str(&t),
+                _ => {}
+            }
+        }
+        text
+    }
+
+    /// Count scripts in text, excluding Common and Inherited.
+    fn count_scripts(text: &str) -> (usize, Vec<output::ScriptCount>) {
+        let mut counts: HashMap<Script, usize> = HashMap::new();
+        let mut total = 0usize;
+
+        for ch in text.chars() {
+            let script = ch.script();
+            if script == Script::Common || script == Script::Inherited {
+                continue;
+            }
+            *counts.entry(script).or_insert(0) += 1;
+            total += 1;
+        }
+
+        let mut scripts: Vec<output::ScriptCount> = counts
+            .into_iter()
+            .map(|(script, count)| output::ScriptCount {
+                script: format!("{:?}", script),
+                count,
+                pct: if total > 0 { count as f64 / total as f64 * 100.0 } else { 0.0 },
+            })
+            .collect();
+
+        scripts.sort_by(|a, b| b.count.cmp(&a.count));
+        (total, scripts)
+    }
+
+    let mut results: Vec<output::CharsResult> = Vec::new();
+
+    for file in &files {
+        let content = if file == "-" {
+            read_input("-")?
+        } else {
+            std::fs::read_to_string(file).with_context(|| format!("Failed to read {}", file))?
+        };
+
+        let body_text = extract_body_text(&content);
+        let (total, scripts) = count_scripts(&body_text);
+
+        results.push(output::CharsResult {
+            file: file.clone(),
+            total,
+            scripts,
+        });
+    }
+
+    if json {
+        if results.len() == 1 {
+            println!("{}", output::to_json(&results[0], pretty));
+        } else {
+            let meta = output::Meta::paging(results.len(), results.len(), 0, results.len());
+            let env = output::Envelope::with_results(meta, results);
+            println!("{}", output::to_json(&env, pretty));
+        }
+    } else {
+        for r in &results {
+            println!("{}", r.format_raw());
+        }
+    }
 
     Ok(0)
 }

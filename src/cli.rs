@@ -18,6 +18,7 @@ use clap::{Parser, Subcommand, ValueEnum};
   section-add FILE -t HDR  add section (--after --before --level)
   section-delete FILE -s ADDR
   frontmatter-set FILE -k KEY -v VAL
+  chars INPUT               Unicode script character statistics
   index PATH               DB management (--status --force --check)
 Flags: --json --max-bytes N --limit N --offset N --count-only --exists --stats
 Exit: 0=ok 1=not-found 2=error | Input: file, dir (recursive .md), "-" (stdin)"####
@@ -164,6 +165,12 @@ pub enum Commands {
     #[command(name = "frontmatter-set", after_help = r#"  frontmatter-set doc.md -k tags -v '["rust","cli"]'
   frontmatter-set doc.md -k draft -v true"#)]
     FrontmatterSet(FrontmatterSetArgs),
+
+    /// Unicode script character statistics
+    #[command(after_help = r#"  chars doc.md                       # single file
+  chars ./docs                       # directory (per-file)
+  echo "text" | chars -              # stdin"#)]
+    Chars(CharsArgs),
 
     /// DB management
     #[command(after_help = r#"  index ./docs                       # sync
@@ -483,6 +490,13 @@ pub struct FrontmatterSetArgs {
 
     #[arg(long)]
     pub with_toc: bool,
+}
+
+// ---------- chars ----------
+#[derive(Parser)]
+pub struct CharsArgs {
+    /// Input: file, directory, or "-" for stdin
+    pub input: String,
 }
 
 // ---------- index ----------
