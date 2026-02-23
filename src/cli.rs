@@ -10,6 +10,7 @@ use clap::{Parser, Subcommand, ValueEnum};
   tree PATH                directory structure
   search INPUT -q QUERY    full-text (multi -q, --scope, --match, --context)
   frontmatter INPUT        YAML fields (--field --filter --facets FIELD)
+  overview INPUT            file overview with frontmatter + structure metadata
   links FILE               outgoing links (--broken --resolved)
   backlinks FILE           incoming links
   graph INPUT              link graph (--format adjacency|edges|stats)
@@ -120,6 +121,13 @@ pub enum Commands {
   frontmatter ./docs --field tags    # specific field
   frontmatter ./docs --facets tags   # value distribution"#)]
     Frontmatter(FrontmatterArgs),
+
+    /// File overview with frontmatter and structure metadata
+    #[command(after_help = r#"  overview ./docs                     # all files
+  overview ./docs --field title --field tags
+  overview ./docs --filter 'status == "published"'
+  overview ./docs --sort title"#)]
+    Overview(OverviewArgs),
 
     /// Outgoing links
     #[command(after_help = r#"  links doc.md                       # all links
@@ -278,6 +286,25 @@ pub struct FrontmatterArgs {
     /// List all unique keys
     #[arg(long)]
     pub list: bool,
+}
+
+// ---------- overview ----------
+#[derive(Parser)]
+pub struct OverviewArgs {
+    /// Input: file or directory
+    pub input: String,
+    /// Frontmatter fields to include (repeatable; omit for all)
+    #[arg(long)]
+    pub field: Vec<String>,
+    /// Filter expression (e.g., 'tags contains "rust"')
+    #[arg(long)]
+    pub filter: Option<String>,
+    /// Sort by field name or "name"/"lines"/"sections"
+    #[arg(long)]
+    pub sort: Option<String>,
+    /// Reverse sort order
+    #[arg(long)]
+    pub reverse: bool,
 }
 
 // ---------- links ----------

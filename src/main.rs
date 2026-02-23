@@ -51,6 +51,7 @@ fn run(cli: Cli) -> Result<i32> {
         Commands::Tree(args) => run_tree(&args, json, pretty, stats),
         Commands::Search(args) => run_search(&args, json, pretty, limit, offset, max_bytes, count_only, exists, threshold, no_overflow),
         Commands::Frontmatter(args) => run_frontmatter(&args, json, pretty, limit, offset, count_only, facets_field),
+        Commands::Overview(args) => run_overview(&args, json, pretty, limit, offset, count_only),
         Commands::Links(args) => run_links(&args, json, pretty, limit, offset, count_only, exists),
         Commands::Backlinks(args) => run_backlinks(&args, json, pretty, limit, offset, count_only),
         Commands::Graph(args) => run_graph(&args, json, pretty, limit, offset),
@@ -676,6 +677,111 @@ fn run_frontmatter(
     }
 
     let paged: Vec<_> = all_entries.into_iter().skip(offset).take(limit).collect();
+    let returned = paged.len();
+
+    if json {
+        let meta = output::Meta::paging(total, returned, offset, limit);
+        let env = output::Envelope::with_results(meta, paged);
+        println!("{}", output::to_json(&env, pretty));
+    } else {
+        for entry in &paged {
+            println!("{}", entry.format_raw());
+        }
+        if returned < total {
+            println!("\n{}", output::format_raw_footer(returned, total, offset));
+        }
+    }
+
+    Ok(if total > 0 { 0 } else { 1 })
+}
+
+fn run_overview(
+    args: &cli::OverviewArgs, json: bool, pretty: bool,
+    limit: usize, offset: usize, count_only: bool,
+) -> Result<i32> {
+    let files = collect_md_files(&args.input)?;
+    if files.is_empty() {
+        return Ok(1);
+    }
+
+    let mut entries: Vec<output::OverviewEntry> = Vec::new();
+
+    for file in &files {
+        let content = match std::fs::read_to_string(file) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        let doc = markdown::parse_document(&content);
+        let fm = frontmatter::parse_frontmatter(&content);
+
+        // Apply filter
+        if let Some(ref filter_expr) = args.filter {
+            match &fm {
+                Some(fm_data) => {
+                    if !frontmatter::filter_matches(fm_data, filter_expr) {
+                        continue;
+                    }
+                }
+                None => continue,
+            }
+        }
+
+        // Build frontmatter map with field selection
+        let mut fm_map = std::collections::HashMap::new();
+        if let Some(ref fm_data) = fm {
+            for field in &fm_data.fields {
+                if !args.field.is_empty() && !args.field.contains(&field.key) {
+                    continue;
+                }
+                let val: serde_json::Value = serde_json::from_str(&field.value_json).unwrap_or_default();
+                fm_map.insert(field.key.clone(), val);
+            }
+        }
+
+        entries.push(output::OverviewEntry {
+            file: file.clone(),
+            lines: content.lines().count(),
+            bytes: content.len(),
+            sections: doc.sections.len(),
+            has_frontmatter: fm.is_some(),
+            frontmatter: fm_map,
+        });
+    }
+
+    // Sort
+    if let Some(ref sort_key) = args.sort {
+        match sort_key.as_str() {
+            "name" => entries.sort_by(|a, b| a.file.cmp(&b.file)),
+            "lines" => entries.sort_by(|a, b| a.lines.cmp(&b.lines)),
+            "sections" => entries.sort_by(|a, b| a.sections.cmp(&b.sections)),
+            "bytes" => entries.sort_by(|a, b| a.bytes.cmp(&b.bytes)),
+            field_name => {
+                entries.sort_by(|a, b| {
+                    let va = a.frontmatter.get(field_name).and_then(|v| v.as_str()).unwrap_or("");
+                    let vb = b.frontmatter.get(field_name).and_then(|v| v.as_str()).unwrap_or("");
+                    va.cmp(vb)
+                });
+            }
+        }
+    }
+
+    if args.reverse {
+        entries.reverse();
+    }
+
+    let total = entries.len();
+
+    if count_only {
+        if json {
+            println!("{}", output::to_json(&serde_json::json!({"meta":{"total": total}}), pretty));
+        } else {
+            println!("{}", total);
+        }
+        return Ok(if total > 0 { 0 } else { 1 });
+    }
+
+    let paged: Vec<_> = entries.into_iter().skip(offset).take(limit).collect();
     let returned = paged.len();
 
     if json {

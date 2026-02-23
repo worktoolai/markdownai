@@ -340,6 +340,53 @@ impl FacetsResult {
 }
 
 // ---------------------------------------------------------------------------
+// Overview output
+// ---------------------------------------------------------------------------
+
+/// Overview entry for a single markdown file.
+#[derive(Serialize, Clone)]
+pub struct OverviewEntry {
+    pub file: String,
+    pub lines: usize,
+    pub bytes: usize,
+    pub sections: usize,
+    pub has_frontmatter: bool,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    pub frontmatter: HashMap<String, Value>,
+}
+
+impl OverviewEntry {
+    /// Format overview entry in raw mode.
+    /// Line 1: file path
+    /// Line 2: frontmatter fields (if any)
+    /// Line 3: structural metadata
+    pub fn format_raw(&self) -> String {
+        let mut lines = vec![self.file.clone()];
+
+        if !self.frontmatter.is_empty() {
+            let fields: Vec<String> = self.frontmatter.iter().map(|(k, v)| {
+                let val_str = match v {
+                    Value::String(s) => s.clone(),
+                    Value::Array(arr) => {
+                        let items: Vec<String> = arr.iter().map(|item| match item {
+                            Value::String(s) => format!("\"{}\"", s),
+                            _ => item.to_string(),
+                        }).collect();
+                        format!("[{}]", items.join(", "))
+                    }
+                    _ => v.to_string(),
+                };
+                format!("{}: {}", k, val_str)
+            }).collect();
+            lines.push(format!("  {}", fields.join(" | ")));
+        }
+
+        lines.push(format!("  sections: {} | lines: {} | bytes: {}", self.sections, self.lines, self.bytes));
+        lines.join("\n")
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Search results
 // ---------------------------------------------------------------------------
 
