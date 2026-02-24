@@ -2,6 +2,7 @@ use std::fs;
 use std::io::{self, Read};
 
 use anyhow::{bail, Context, Result};
+use regex::Regex;
 
 use crate::frontmatter;
 use crate::markdown::parse_document;
@@ -144,6 +145,66 @@ pub fn frontmatter_set(
     }
 
     Ok(new_full_content)
+}
+
+pub fn renum(file: &str, output: Option<&str>, dry_run: bool) -> Result<String> {
+    let original_content = fs::read_to_string(file)
+        .with_context(|| format!("Failed to read file '{}'", file))?;
+    let original_hash = xxhash_rust::xxh3::xxh3_64(original_content.as_bytes());
+
+    let new_content = renum_content(&original_content);
+
+    if dry_run {
+        print_diff(&original_content, &new_content);
+    } else {
+        verify_and_write(file, original_hash, &new_content, output)?;
+    }
+
+    Ok(new_content)
+}
+
+pub fn renum_content(content: &str) -> String {
+    let re = Regex::new(r"^(#{1,6})\s+(\d+(?:\.\d+)*)\s+(.+)$").unwrap();
+    let mut counters: [usize; 7] = [0; 7]; // index 1..6
+    let mut parent_nums: [usize; 7] = [0; 7];
+    let mut lines: Vec<String> = Vec::new();
+
+    for line in content.lines() {
+        if let Some(caps) = re.captures(line) {
+            let hashes = &caps[1];
+            let level = hashes.len();
+            let title = &caps[3];
+
+            // Increment counter at this level
+            counters[level] += 1;
+            parent_nums[level] = counters[level];
+
+            // Reset all deeper levels
+            for i in (level + 1)..=6 {
+                counters[i] = 0;
+                parent_nums[i] = 0;
+            }
+
+            // Build hierarchical number from the first numbered ancestor
+            let mut parts: Vec<String> = Vec::new();
+            for i in 1..=level {
+                if parent_nums[i] > 0 {
+                    parts.push(parent_nums[i].to_string());
+                }
+            }
+            let new_num = parts.join(".");
+
+            lines.push(format!("{} {} {}", hashes, new_num, title));
+        } else {
+            lines.push(line.to_string());
+        }
+    }
+
+    let mut result = lines.join("\n");
+    if content.ends_with('\n') {
+        result.push('\n');
+    }
+    result
 }
 
 fn verify_and_write(file: &str, original_hash: u64, new_content: &str, output: Option<&str>) -> Result<()> {
@@ -430,11 +491,107 @@ mod tests {
             false,
         );
         assert!(result.is_ok());
-        
+
         let new_content = fs::read_to_string(&test_file).unwrap();
         assert!(new_content.contains("title: New Title"));
         assert!(!new_content.contains("Old Title"));
 
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    // ---------- renum tests ----------
+
+    #[test]
+    fn test_renum_basic_flat() {
+        let input = "## 3 Alpha\n\nSome text\n\n## 5 Beta\n\nMore text\n\n## 10 Gamma\n";
+        let result = renum_content(input);
+        assert!(result.contains("## 1 Alpha"));
+        assert!(result.contains("## 2 Beta"));
+        assert!(result.contains("## 3 Gamma"));
+    }
+
+    #[test]
+    fn test_renum_hierarchical() {
+        let input = "# 1 Top\n\n## 1.1 Sub A\n\n### 1.1.1 Deep\n\n## 1.2 Sub B\n\n# 5 Second\n\n## 5.1 Sub C\n";
+        let result = renum_content(input);
+        assert!(result.contains("# 1 Top"));
+        assert!(result.contains("## 1.1 Sub A"));
+        assert!(result.contains("### 1.1.1 Deep"));
+        assert!(result.contains("## 1.2 Sub B"));
+        assert!(result.contains("# 2 Second"));
+        assert!(result.contains("## 2.1 Sub C"));
+    }
+
+    #[test]
+    fn test_renum_skips_unnumbered_headings() {
+        let input = "# 1 Numbered\n\n## Unnumbered\n\nText\n\n# 5 Also Numbered\n";
+        let result = renum_content(input);
+        assert!(result.contains("# 1 Numbered"));
+        assert!(result.contains("## Unnumbered"));
+        assert!(result.contains("# 2 Also Numbered"));
+    }
+
+    #[test]
+    fn test_renum_gap_renumber() {
+        let input = "## 1 First\n\n## 3 Third\n\n## 5 Fifth\n";
+        let result = renum_content(input);
+        assert!(result.contains("## 1 First"));
+        assert!(result.contains("## 2 Third"));
+        assert!(result.contains("## 3 Fifth"));
+    }
+
+    #[test]
+    fn test_renum_preserves_non_heading_lines() {
+        let input = "Some intro\n\n## 5 Section\n\nBody text\n\n```code```\n";
+        let result = renum_content(input);
+        assert!(result.contains("Some intro"));
+        assert!(result.contains("## 1 Section"));
+        assert!(result.contains("Body text"));
+        assert!(result.contains("```code```"));
+    }
+
+    #[test]
+    fn test_renum_dry_run_no_write() {
+        let temp_dir = create_test_dir("mdai_test_renum_dry");
+        let test_file = temp_dir.join("test.md");
+        let initial_content = "## 5 Alpha\n\n## 10 Beta\n";
+        fs::write(&test_file, initial_content).unwrap();
+
+        let result = renum(test_file.to_str().unwrap(), None, true);
+        assert!(result.is_ok());
+
+        let file_content = fs::read_to_string(&test_file).unwrap();
+        assert_eq!(file_content, initial_content);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_renum_writes_file() {
+        let temp_dir = create_test_dir("mdai_test_renum_write");
+        let test_file = temp_dir.join("test.md");
+        let initial_content = "## 5 Alpha\n\n## 10 Beta\n";
+        fs::write(&test_file, initial_content).unwrap();
+
+        let result = renum(test_file.to_str().unwrap(), None, false);
+        assert!(result.is_ok());
+
+        let file_content = fs::read_to_string(&test_file).unwrap();
+        assert!(file_content.contains("## 1 Alpha"));
+        assert!(file_content.contains("## 2 Beta"));
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_renum_deep_hierarchy() {
+        let input = "# 1 A\n\n## 1.1 B\n\n### 1.1.1 C\n\n### 1.1.2 D\n\n## 1.2 E\n\n### 1.2.1 F\n";
+        let result = renum_content(input);
+        assert!(result.contains("# 1 A"));
+        assert!(result.contains("## 1.1 B"));
+        assert!(result.contains("### 1.1.1 C"));
+        assert!(result.contains("### 1.1.2 D"));
+        assert!(result.contains("## 1.2 E"));
+        assert!(result.contains("### 1.2.1 F"));
     }
 }

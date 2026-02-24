@@ -18,6 +18,7 @@ use clap::{Parser, Subcommand, ValueEnum};
   section-add FILE -t HDR  add section (--after --before --level)
   section-delete FILE -s ADDR
   frontmatter-set FILE -k KEY -v VAL
+  renum FILE                renumber heading numbers sequentially
   chars INPUT               Unicode script character statistics
   index PATH               DB management (--status --force --check)
 Flags: --json --max-bytes N --limit N --offset N --count-only --exists --stats
@@ -165,6 +166,11 @@ pub enum Commands {
     #[command(name = "frontmatter-set", after_help = r#"  frontmatter-set doc.md -k tags -v '["rust","cli"]'
   frontmatter-set doc.md -k draft -v true"#)]
     FrontmatterSet(FrontmatterSetArgs),
+
+    /// Renumber heading numbers sequentially
+    #[command(after_help = r#"  renum doc.md                       # renumber all
+  renum doc.md --dry-run             # preview changes"#)]
+    Renum(RenumArgs),
 
     /// Unicode script character statistics
     #[command(after_help = r#"  chars doc.md                       # single file
@@ -490,6 +496,21 @@ pub struct FrontmatterSetArgs {
 
     #[arg(long)]
     pub with_toc: bool,
+}
+
+// ---------- renum ----------
+#[derive(Parser)]
+pub struct RenumArgs {
+    /// File path
+    pub file: String,
+
+    /// Dry run (show changes, no write)
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Write to different file
+    #[arg(long)]
+    pub output: Option<String>,
 }
 
 // ---------- chars ----------

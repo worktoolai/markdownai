@@ -59,6 +59,7 @@ fn run(cli: Cli) -> Result<i32> {
         Commands::SectionAdd(args) => run_section_add(&args),
         Commands::SectionDelete(args) => run_section_delete(&args),
         Commands::FrontmatterSet(args) => run_frontmatter_set(&args),
+        Commands::Renum(args) => run_renum(&args),
         Commands::Chars(args) => run_chars(&args, json, pretty),
         Commands::Index(args) => run_index(&args, json, pretty),
     }
@@ -1054,6 +1055,14 @@ fn run_frontmatter_set(args: &cli::FrontmatterSetArgs) -> Result<i32> {
     manipulate::frontmatter_set(
         &args.file, &args.key, &args.value,
         args.output.as_deref(), args.dry_run,
+    )?;
+
+    Ok(0)
+}
+
+fn run_renum(args: &cli::RenumArgs) -> Result<i32> {
+    manipulate::renum(
+        &args.file, args.output.as_deref(), args.dry_run,
     )?;
 
     Ok(0)
