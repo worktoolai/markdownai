@@ -164,16 +164,42 @@ pub fn renum(file: &str, output: Option<&str>, dry_run: bool) -> Result<String> 
 }
 
 pub fn renum_content(content: &str) -> String {
-    let re = Regex::new(r"^(#{1,6})\s+(\d+(?:\.\d+)*)\s+(.+)$").unwrap();
+    let re = Regex::new(r"^(#{1,6})\s+(\d+(?:\.\d+)*)(\.?)\s+(.+)$").unwrap();
+    let fence_re = Regex::new(r"^(`{3,}|~{3,})").unwrap();
     let mut counters: [usize; 7] = [0; 7]; // index 1..6
     let mut parent_nums: [usize; 7] = [0; 7];
     let mut lines: Vec<String> = Vec::new();
+    let mut in_code_block = false;
+    let mut fence_marker: String = String::new();
 
     for line in content.lines() {
+        if in_code_block {
+            if let Some(m) = fence_re.find(line) {
+                let closer = m.as_str();
+                if closer.chars().next() == fence_marker.chars().next()
+                    && closer.len() >= fence_marker.len()
+                    && line.trim() == closer
+                {
+                    in_code_block = false;
+                    fence_marker.clear();
+                }
+            }
+            lines.push(line.to_string());
+            continue;
+        }
+
+        if let Some(m) = fence_re.find(line) {
+            in_code_block = true;
+            fence_marker = m.as_str().to_string();
+            lines.push(line.to_string());
+            continue;
+        }
+
         if let Some(caps) = re.captures(line) {
             let hashes = &caps[1];
             let level = hashes.len();
-            let title = &caps[3];
+            let trailing_dot = &caps[3];
+            let title = &caps[4];
 
             // Increment counter at this level
             counters[level] += 1;
@@ -194,7 +220,7 @@ pub fn renum_content(content: &str) -> String {
             }
             let new_num = parts.join(".");
 
-            lines.push(format!("{} {} {}", hashes, new_num, title));
+            lines.push(format!("{} {}{} {}", hashes, new_num, trailing_dot, title));
         } else {
             lines.push(line.to_string());
         }
@@ -593,5 +619,39 @@ mod tests {
         assert!(result.contains("### 1.1.2 D"));
         assert!(result.contains("## 1.2 E"));
         assert!(result.contains("### 1.2.1 F"));
+    }
+
+    #[test]
+    fn test_renum_trailing_dot() {
+        let input = "## 1. Overview\n\n## 2. Architecture\n\n### 2.1 Flow\n\n### 2.2 State\n\n## 3. Design\n\n### 3.1 Why\n";
+        let result = renum_content(input);
+        assert!(result.contains("## 1. Overview"));
+        assert!(result.contains("## 2. Architecture"));
+        assert!(result.contains("### 2.1 Flow"));
+        assert!(result.contains("### 2.2 State"));
+        assert!(result.contains("## 3. Design"));
+        assert!(result.contains("### 3.1 Why"));
+    }
+
+    #[test]
+    fn test_renum_skips_code_blocks() {
+        let input = "## 1. Overview\n\n```bash\n# 3. this is a comment\n# 5. another comment\n```\n\n## 2. Next\n\n### 2.1 Sub\n";
+        let result = renum_content(input);
+        assert!(result.contains("## 1. Overview"));
+        assert!(result.contains("# 3. this is a comment")); // unchanged inside code block
+        assert!(result.contains("# 5. another comment")); // unchanged inside code block
+        assert!(result.contains("## 2. Next"));
+        assert!(result.contains("### 2.1 Sub"));
+    }
+
+    #[test]
+    fn test_renum_trailing_dot_with_gaps() {
+        let input = "## 1. First\n\n### 1.1 Sub\n\n## 5. Jumped\n\n### 5.1 Deep\n\n### 5.2 Deeper\n";
+        let result = renum_content(input);
+        assert!(result.contains("## 1. First"));
+        assert!(result.contains("### 1.1 Sub"));
+        assert!(result.contains("## 2. Jumped"));
+        assert!(result.contains("### 2.1 Deep"));
+        assert!(result.contains("### 2.2 Deeper"));
     }
 }
