@@ -1,8 +1,11 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
+const VERSION: &str = env!("GIT_VERSION");
+
 #[derive(Parser)]
 #[command(
     name = "markdownai",
+    version = VERSION,
     about = "Agent-first Markdown CLI (auto-syncs DB, raw output default)",
     after_help = r####"Section: "#1.1" (toc index) | "## Head > ### Sub" (path) | "L10-L25" (lines)
   toc FILE                 headings with section numbers
