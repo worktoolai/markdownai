@@ -975,6 +975,40 @@ fn run_graph(
                 }
             }
         }
+        cli::GraphFormat::Orphans => {
+            let nodes = links::build_graph(&files_with_links);
+            let total_edges: usize = nodes.iter().map(|n| n.outgoing.len()).sum();
+            let orphan_nodes: Vec<_> = nodes.iter()
+                .filter(|n| n.incoming.is_empty())
+                .collect();
+            let total_orphans = orphan_nodes.len();
+            let paged: Vec<_> = orphan_nodes.into_iter().skip(offset).take(limit).collect();
+            let returned = paged.len();
+
+            if json {
+                let entries: Vec<output::OrphanEntry> = paged.iter().map(|n| output::OrphanEntry {
+                    path: n.path.clone(),
+                    out_degree: n.outgoing.len(),
+                }).collect();
+                let env = output::GraphOrphans {
+                    meta: output::OrphanMeta {
+                        files: nodes.len(),
+                        orphans: total_orphans,
+                        edges: total_edges,
+                    },
+                    orphans: entries,
+                };
+                println!("{}", output::to_json(&env, pretty));
+            } else {
+                println!("{} files, {} orphans\n", nodes.len(), total_orphans);
+                for n in &paged {
+                    println!("{}  (0 in, {} out)", n.path, n.outgoing.len());
+                }
+                if returned < total_orphans {
+                    println!("\n{}", output::format_raw_footer(returned, total_orphans, offset));
+                }
+            }
+        }
         cli::GraphFormat::Adjacency => {
             let nodes = links::build_graph(&files_with_links);
             let total_edges: usize = nodes.iter().map(|n| n.outgoing.len()).sum();

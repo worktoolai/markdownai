@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! SQLite database management for the markdownai index.
 //!
 //! This module provides the `Database` struct which wraps a SQLite connection

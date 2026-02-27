@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Full-text search engine using Tantivy for markdown content.
 //!
 //! This module provides persistent full-text search using Tantivy with a disk-based

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Markdown parsing module using pulldown-cmark.
 //!
 //! This module provides functionality to parse markdown content and extract

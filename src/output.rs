@@ -803,6 +803,32 @@ impl GraphStats {
 }
 
 // ---------------------------------------------------------------------------
+// Graph orphans output
+// ---------------------------------------------------------------------------
+
+/// Metadata for orphan report.
+#[derive(Serialize)]
+pub struct OrphanMeta {
+    pub files: usize,
+    pub orphans: usize,
+    pub edges: usize,
+}
+
+/// Individual orphan entry.
+#[derive(Serialize)]
+pub struct OrphanEntry {
+    pub path: String,
+    pub out_degree: usize,
+}
+
+/// Graph orphans report.
+#[derive(Serialize)]
+pub struct GraphOrphans {
+    pub meta: OrphanMeta,
+    pub orphans: Vec<OrphanEntry>,
+}
+
+// ---------------------------------------------------------------------------
 // Frontmatter output
 // ---------------------------------------------------------------------------
 

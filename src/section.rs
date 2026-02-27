@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Section address parsing and section content reading/manipulation.
 //!
 //! This module provides functionality for:

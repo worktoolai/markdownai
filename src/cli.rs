@@ -147,6 +147,7 @@ pub enum Commands {
     /// Link graph
     #[command(after_help = r#"  graph ./docs                       # full graph
   graph ./docs --format stats        # stats only
+  graph ./docs --format orphans      # find orphan files
   graph ./docs --start index.md --depth 2"#)]
     Graph(GraphArgs),
 
@@ -374,9 +375,6 @@ pub struct GraphArgs {
     #[arg(long)]
     pub depth: Option<usize>,
 
-    /// Show orphan nodes
-    #[arg(long)]
-    pub orphans: bool,
 }
 
 #[derive(Clone, ValueEnum)]
@@ -384,6 +382,7 @@ pub enum GraphFormat {
     Adjacency,
     Edges,
     Stats,
+    Orphans,
 }
 
 // ---------- section-set ----------

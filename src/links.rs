@@ -733,6 +733,54 @@ mod tests {
     }
 
     #[test]
+    fn test_orphan_detection() {
+        // Orphan = no incoming links (regardless of outgoing)
+        let nodes = vec![
+            GraphNode {
+                path: "/index.md".to_string(),
+                outgoing: vec!["/about.md".to_string(), "/old.md".to_string()],
+                incoming: vec!["/about.md".to_string()],
+            },
+            GraphNode {
+                path: "/about.md".to_string(),
+                outgoing: vec!["/index.md".to_string()],
+                incoming: vec!["/index.md".to_string()],
+            },
+            GraphNode {
+                path: "/old.md".to_string(),
+                outgoing: vec!["/about.md".to_string()],
+                incoming: vec!["/index.md".to_string()],
+            },
+            GraphNode {
+                path: "/orphan-with-links.md".to_string(),
+                outgoing: vec!["/index.md".to_string(), "/about.md".to_string()],
+                incoming: vec![],
+            },
+            GraphNode {
+                path: "/isolated.md".to_string(),
+                outgoing: vec![],
+                incoming: vec![],
+            },
+        ];
+
+        let orphans: Vec<_> = nodes.iter()
+            .filter(|n| n.incoming.is_empty())
+            .collect();
+
+        assert_eq!(orphans.len(), 2);
+        assert_eq!(orphans[0].path, "/orphan-with-links.md");
+        assert_eq!(orphans[1].path, "/isolated.md");
+
+        // orphan-with-links has outgoing but still qualifies as orphan
+        assert_eq!(orphans[0].outgoing.len(), 2);
+        assert!(orphans[0].incoming.is_empty());
+
+        // isolated has neither incoming nor outgoing
+        assert!(orphans[1].outgoing.is_empty());
+        assert!(orphans[1].incoming.is_empty());
+    }
+
+    #[test]
     fn test_links_different_lines_correct_line_numbers() {
         let content = "Line 1: [[Page1]]\nLine 2: [[Page2]]\nLine 3: [[Page3]]";
         let links = parse_links(content);
