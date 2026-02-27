@@ -379,9 +379,13 @@ pub struct GraphArgs {
 
 #[derive(Clone, ValueEnum)]
 pub enum GraphFormat {
+    /// Node → neighbors list
     Adjacency,
+    /// Flat from → to edge list
     Edges,
+    /// Summary counts and top nodes
     Stats,
+    /// Files with no incoming links
     Orphans,
 }
 
