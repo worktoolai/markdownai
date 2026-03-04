@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 const VERSION: &str = env!("GIT_VERSION");
 
@@ -155,6 +155,15 @@ pub enum Commands {
     #[command(name = "section-set", after_help = r####"  section-set doc.md -s "#1.1" -c "New content"
   echo "content" | section-set doc.md -s "## Setup" --content -"####)]
     SectionSet(SectionSetArgs),
+
+    /// Replace entire section (heading + body)
+    #[command(name = "section-replace", after_help = r####"  section-replace doc.md -s "#1.1" -c "## New Title\n\nNew body"
+  section-replace doc.md -s "## Old" --content-file new_section.md"####)]
+    SectionReplace(SectionReplaceArgs),
+
+    /// Write content to file
+    #[command(name = "write")]
+    Write(WriteArgs),
 
     /// Add new section
     #[command(name = "section-add", after_help = r####"  section-add doc.md -t "## New Section" -c "Content"
@@ -418,6 +427,57 @@ pub struct SectionSetArgs {
     /// Include updated toc in response
     #[arg(long)]
     pub with_toc: bool,
+}
+
+// ---------- section-replace ----------
+#[derive(Parser)]
+pub struct SectionReplaceArgs {
+    /// File path
+    pub file: String,
+
+    /// Section address to replace
+    #[arg(short, long)]
+    pub section: String,
+
+    /// Inline content (must start with heading)
+    #[arg(short, long)]
+    pub content: Option<String>,
+
+    /// Content from file
+    #[arg(long)]
+    pub content_file: Option<String>,
+
+    /// Dry run (show changes, no write)
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Write to different file
+    #[arg(long)]
+    pub output: Option<String>,
+
+    /// Include updated toc in response
+    #[arg(long)]
+    pub with_toc: bool,
+}
+
+// ---------- write ----------
+#[derive(Args)]
+#[command(name = "write")]
+pub struct WriteArgs {
+    /// Target file path
+    pub file: String,
+
+    /// Inline content
+    #[arg(short, long)]
+    pub content: Option<String>,
+
+    /// Read content from file (use - for stdin)
+    #[arg(long)]
+    pub content_file: Option<String>,
+
+    /// Preview without writing
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 // ---------- section-add ----------

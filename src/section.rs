@@ -418,6 +418,21 @@ pub fn replace_section_content(
         String::new()
     };
 
+    // Reject content that contains markdown headings — use section-add for new sections
+    for (i, line) in new_content.lines().enumerate() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with('#') && trimmed.contains(' ') {
+            let hashes: String = trimmed.chars().take_while(|&c| c == '#').collect();
+            if hashes.len() <= 6 {
+                bail!(
+                    "Content must not contain headings (line {}: \"{}\"). Use section-add to create new sections.",
+                    i + 1,
+                    line
+                );
+            }
+        }
+    }
+
     // Build new content
     let mut result = String::new();
 
@@ -438,6 +453,52 @@ pub fn replace_section_content(
         if !new_content.ends_with('\n') && !after.is_empty() {
             result.push('\n');
         }
+    }
+
+    if !after.is_empty() {
+        result.push_str(&after);
+    }
+
+    Ok(result)
+}
+
+/// Replace an entire section (heading + body) with new content.
+pub fn replace_section_full(
+    content: &str,
+    section: &Section,
+    new_content: &str,
+) -> Result<String> {
+    let lines: Vec<&str> = content.split('\n').collect();
+
+    if section.start_line == 0 || section.start_line > lines.len() {
+        bail!(
+            "Invalid section start line: {} (file has {} lines)",
+            section.start_line,
+            lines.len()
+        );
+    }
+
+    let content_end = section.end_line.min(lines.len());
+
+    // before = everything before the heading line
+    let before: String = lines[..section.start_line.saturating_sub(1)].join("\n");
+    // after = everything after the section
+    let after: String = if content_end < lines.len() {
+        lines[content_end..].join("\n")
+    } else {
+        String::new()
+    };
+
+    let mut result = String::new();
+
+    if !before.is_empty() {
+        result.push_str(&before);
+        result.push('\n');
+    }
+
+    result.push_str(new_content);
+    if !new_content.ends_with('\n') && !after.is_empty() {
+        result.push('\n');
     }
 
     if !after.is_empty() {

@@ -56,6 +56,8 @@ fn run(cli: Cli) -> Result<i32> {
         Commands::Backlinks(args) => run_backlinks(&args, json, pretty, limit, offset, count_only),
         Commands::Graph(args) => run_graph(&args, json, pretty, limit, offset),
         Commands::SectionSet(args) => run_section_set(&args),
+        Commands::SectionReplace(args) => run_section_replace(&args),
+        Commands::Write(args) => run_write(&args),
         Commands::SectionAdd(args) => run_section_add(&args),
         Commands::SectionDelete(args) => run_section_delete(&args),
         Commands::FrontmatterSet(args) => run_frontmatter_set(&args),
@@ -1043,6 +1045,41 @@ fn run_graph(
             }
         }
     }
+
+    Ok(0)
+}
+
+fn run_write(args: &cli::WriteArgs) -> Result<i32> {
+    let content = manipulate::read_content_input(
+        args.content.as_deref(),
+        args.content_file.as_deref(),
+    )?;
+
+    if args.dry_run {
+        println!("{}", content);
+        return Ok(0);
+    }
+
+    if let Some(parent) = std::path::Path::new(&args.file).parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+
+    std::fs::write(&args.file, &content)?;
+    Ok(0)
+}
+
+fn run_section_replace(args: &cli::SectionReplaceArgs) -> Result<i32> {
+    let content = manipulate::read_content_input(
+        args.content.as_deref(),
+        args.content_file.as_deref(),
+    )?;
+
+    manipulate::section_replace(
+        &args.file, &args.section, &content,
+        args.output.as_deref(), args.dry_run,
+    )?;
 
     Ok(0)
 }

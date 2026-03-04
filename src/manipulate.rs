@@ -10,6 +10,7 @@ use crate::section;
 
 pub fn read_content_input(inline: Option<&str>, file: Option<&str>) -> Result<String> {
     if let Some(content) = inline {
+        let content = content.replace("\\n", "\n").replace("\\t", "\t");
         Ok(content.to_string())
     } else if let Some(path) = file {
         if path == "-" {
@@ -40,6 +41,40 @@ pub fn section_set(
     let target = section::resolve_section_address(&addr, &doc.sections)?;
 
     let new_full_content = section::replace_section_content(&original_content, target, new_content)?;
+
+    if dry_run {
+        print_diff(&original_content, &new_full_content);
+    } else {
+        verify_and_write(file, original_hash, &new_full_content, output)?;
+    }
+
+    Ok(new_full_content)
+}
+
+pub fn section_replace(
+    file: &str,
+    section_addr: &str,
+    new_content: &str,
+    output: Option<&str>,
+    dry_run: bool,
+) -> Result<String> {
+    // Validate: content must start with a heading
+    let first_line = new_content.lines().next().unwrap_or("");
+    let trimmed = first_line.trim_start();
+    if !trimmed.starts_with('#') || !trimmed.contains(' ') {
+        bail!("Content must start with a heading (e.g. '## Title'). Use section-set for body-only updates.");
+    }
+
+    let original_content = fs::read_to_string(file)
+        .with_context(|| format!("Failed to read file '{}'", file))?;
+    let original_hash = xxhash_rust::xxh3::xxh3_64(original_content.as_bytes());
+
+    let doc = parse_document(&original_content);
+    let addr = section::parse_section_address(section_addr)?;
+    let target = section::resolve_section_address(&addr, &doc.sections)?;
+
+    let new_full_content = section::replace_section_full(&original_content, target, new_content)?;
+    let new_full_content = renum_content(&new_full_content);
 
     if dry_run {
         print_diff(&original_content, &new_full_content);
@@ -90,6 +125,7 @@ pub fn section_add(
     };
 
     let new_full_content = section::insert_section(&original_content, position_line, &heading, content)?;
+    let new_full_content = renum_content(&new_full_content);
 
     if dry_run {
         print_diff(&original_content, &new_full_content);
@@ -115,6 +151,7 @@ pub fn section_delete(
     let target = section::resolve_section_address(&addr, &doc.sections)?;
 
     let new_full_content = section::delete_section(&original_content, target)?;
+    let new_full_content = renum_content(&new_full_content);
 
     if dry_run {
         print_diff(&original_content, &new_full_content);
