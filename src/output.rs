@@ -126,7 +126,7 @@ pub fn format_raw_footer(returned: usize, total: usize, offset: usize) -> String
     if offset + returned >= total {
         format!("--- {}/{} shown ---", returned, total)
     } else {
-        format!("--- {}/{} shown, next: --offset {} ---", returned, total, offset + returned)
+        format!("--- {}/{} shown | IMPORTANT: {} more items exist. Use --offset {} to see the rest ---", returned, total, total - (offset + returned), offset + returned)
     }
 }
 
