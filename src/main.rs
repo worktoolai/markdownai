@@ -1145,41 +1145,6 @@ fn run_graph(
                 }
             }
         }
-        cli::GraphFormat::Frontmatter => {
-            let field = match args.field.as_ref() {
-                Some(f) => f,
-                None => {
-                    eprintln!("Error: --field is required for frontmatter format");
-                    return Ok(2);
-                }
-            };
-
-            let relation = match args.relation.as_ref() {
-                Some(cli::GraphRelation::Ref) => "ref",
-                Some(cli::GraphRelation::Shared) | None => "shared",
-            };
-
-            let mut include_fields: Vec<String> = args.include.as_deref()
-                .map(|s| s.split(',').map(|x| x.trim().to_string()).collect())
-                .unwrap_or_else(|| Vec::new());
-
-            // Auto-include order_by field so sorting can access it
-            let order_by = args.order_by.as_deref();
-            if let Some(ob) = order_by {
-                if !include_fields.contains(&ob.to_string()) {
-                    include_fields.push(ob.to_string());
-                }
-            }
-
-            let graph = links::build_frontmatter_graph(&files, field, relation, &include_fields, order_by);
-
-            if json {
-                println!("{}", output::to_json(&graph, pretty));
-            } else {
-                eprintln!("Error: frontmatter format requires --json");
-                return Ok(2);
-            }
-        }
     }
 
     Ok(0)

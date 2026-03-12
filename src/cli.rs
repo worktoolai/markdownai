@@ -391,21 +391,6 @@ pub struct GraphArgs {
     #[arg(long)]
     pub depth: Option<usize>,
 
-    /// Frontmatter field to build relations from (required for frontmatter format)
-    #[arg(long)]
-    pub field: Option<String>,
-
-    /// Relation type for frontmatter graph (default: shared)
-    #[arg(long, value_enum)]
-    pub relation: Option<GraphRelation>,
-
-    /// Comma-separated additional frontmatter fields to include in nodes
-    #[arg(long)]
-    pub include: Option<String>,
-
-    /// Sort nodes by a frontmatter field value (default: filename)
-    #[arg(long)]
-    pub order_by: Option<String>,
 }
 
 #[derive(Clone, ValueEnum)]
@@ -418,16 +403,6 @@ pub enum GraphFormat {
     Stats,
     /// Files with no incoming links
     Orphans,
-    /// Frontmatter field-based relations
-    Frontmatter,
-}
-
-#[derive(Clone, ValueEnum)]
-pub enum GraphRelation {
-    /// Group docs by shared field values
-    Shared,
-    /// Field values point to other filenames/paths
-    Ref,
 }
 
 // ---------- section-set ----------
