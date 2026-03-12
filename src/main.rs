@@ -64,6 +64,7 @@ fn run(cli: Cli) -> Result<i32> {
         Commands::Renum(args) => run_renum(&args),
         Commands::Chars(args) => run_chars(&args, json, pretty),
         Commands::Index(args) => run_index(&args, json, pretty),
+        Commands::FrontmatterQuery(args) => run_frontmatter_query(&args, json, pretty, limit, offset, count_only),
     }
 }
 
@@ -699,6 +700,106 @@ fn run_frontmatter(
     Ok(if total > 0 { 0 } else { 1 })
 }
 
+fn run_frontmatter_query(
+    args: &cli::FrontmatterQueryArgs, json: bool, pretty: bool,
+    limit: usize, offset: usize, count_only: bool,
+) -> Result<i32> {
+    let files = collect_md_files(&args.path)?;
+
+    // Parse requested fields
+    let requested_fields: Vec<String> = args.field
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    if requested_fields.is_empty() {
+        bail!("At least one field must be specified via --field");
+    }
+
+    let mut results = Vec::new();
+
+    for file in &files {
+        let content = match std::fs::read_to_string(file) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        let fm = match frontmatter::parse_frontmatter(&content) {
+            Some(f) => f,
+            None => continue, // Skip files without frontmatter
+        };
+
+        // Apply filter if specified
+        if let Some(ref filter_expr) = args.filter {
+            if !frontmatter::filter_matches(&fm, filter_expr) {
+                continue;
+            }
+        }
+
+        // Extract requested fields - require ALL requested fields to be present
+        let mut fields_map = std::collections::HashMap::new();
+        let mut has_all_fields = true;
+        for field_name in &requested_fields {
+            if let Some(field) = frontmatter::get_field(&fm, field_name) {
+                let val: serde_json::Value = serde_json::from_str(&field.value_json).unwrap_or_default();
+                fields_map.insert(field_name.clone(), val);
+            } else {
+                has_all_fields = false;
+                break;
+            }
+        }
+
+        // Skip files that don't have ALL the requested fields
+        if !has_all_fields {
+            continue;
+        }
+
+        results.push(output::FrontmatterQueryEntry {
+            file: file.clone(),
+            fields: fields_map,
+        });
+    }
+
+    let total = results.len();
+
+    if count_only {
+        if json {
+            println!("{}", output::to_json(&serde_json::json!({
+                "meta": {"total": total, "field": args.field}
+            }), pretty));
+        } else {
+            println!("{}", total);
+        }
+        return Ok(0);
+    }
+
+    let paged: Vec<_> = results.into_iter().skip(offset).take(limit).collect();
+    let returned = paged.len();
+
+    if json {
+        let meta = output::FrontmatterQueryMeta {
+            total,
+            field: args.field.clone(),
+        };
+        let env = output::FrontmatterQueryEnvelope {
+            meta,
+            results: paged,
+        };
+        println!("{}", output::to_json(&env, pretty));
+    } else {
+        // Raw mode output
+        for entry in &paged {
+            println!("{}", entry.format_raw());
+        }
+        if returned < total {
+            println!("\n{}", output::format_raw_footer(returned, total, offset));
+        }
+    }
+
+    Ok(0)
+}
+
 fn run_overview(
     args: &cli::OverviewArgs, json: bool, pretty: bool,
     limit: usize, offset: usize, count_only: bool,
@@ -1042,6 +1143,33 @@ fn run_graph(
                     let shown = (offset + limit).min(edge_count) - offset;
                     println!("\n{}", output::format_raw_footer(shown, edge_count, offset));
                 }
+            }
+        }
+        cli::GraphFormat::Frontmatter => {
+            let field = match args.field.as_ref() {
+                Some(f) => f,
+                None => {
+                    eprintln!("Error: --field is required for frontmatter format");
+                    return Ok(2);
+                }
+            };
+
+            let relation = match args.relation.as_ref() {
+                Some(cli::GraphRelation::Ref) => "ref",
+                Some(cli::GraphRelation::Shared) | None => "shared",
+            };
+
+            let include_fields = args.include.as_deref()
+                .map(|s| s.split(',').map(|x| x.trim().to_string()).collect())
+                .unwrap_or_else(|| Vec::new());
+
+            let graph = links::build_frontmatter_graph(&files, field, relation, &include_fields);
+
+            if json {
+                println!("{}", output::to_json(&graph, pretty));
+            } else {
+                eprintln!("Error: frontmatter format requires --json");
+                return Ok(2);
             }
         }
     }

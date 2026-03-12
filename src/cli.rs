@@ -196,6 +196,13 @@ pub enum Commands {
   index ./docs --force               # full rebuild
   index ./docs --status              # current status"#)]
     Index(IndexArgs),
+
+    /// Query frontmatter fields across files
+    #[command(name = "frontmatter-query", after_help = r#"  frontmatter-query ./docs --field tags
+  frontmatter-query ./docs --field tags,title --json
+  frontmatter-query ./docs --field tags --filter 'tags contains "rust"'
+  frontmatter-query ./docs --field status --count-only"#)]
+    FrontmatterQuery(FrontmatterQueryArgs),
 }
 
 // ---------- toc ----------
@@ -384,6 +391,18 @@ pub struct GraphArgs {
     #[arg(long)]
     pub depth: Option<usize>,
 
+    /// Frontmatter field to build relations from (required for frontmatter format)
+    #[arg(long)]
+    pub field: Option<String>,
+
+    /// Relation type for frontmatter graph (default: shared)
+    #[arg(long, value_enum)]
+    pub relation: Option<GraphRelation>,
+
+    /// Comma-separated additional frontmatter fields to include in nodes
+    #[arg(long)]
+    pub include: Option<String>,
+
 }
 
 #[derive(Clone, ValueEnum)]
@@ -396,6 +415,16 @@ pub enum GraphFormat {
     Stats,
     /// Files with no incoming links
     Orphans,
+    /// Frontmatter field-based relations
+    Frontmatter,
+}
+
+#[derive(Clone, ValueEnum)]
+pub enum GraphRelation {
+    /// Group docs by shared field values
+    Shared,
+    /// Field values point to other filenames/paths
+    Ref,
 }
 
 // ---------- section-set ----------
@@ -607,4 +636,19 @@ pub struct IndexArgs {
     /// Check SQLite <-> Tantivy consistency
     #[arg(long)]
     pub check: bool,
+}
+
+// ---------- frontmatter-query ----------
+#[derive(Parser)]
+pub struct FrontmatterQueryArgs {
+    /// Target directory
+    pub path: String,
+
+    /// Frontmatter field(s) to extract (comma-separated)
+    #[arg(long)]
+    pub field: String,
+
+    /// Filter expression (e.g., 'tags contains "rust"')
+    #[arg(long)]
+    pub filter: Option<String>,
 }

@@ -73,6 +73,50 @@ pub struct GraphEdge {
     pub line: usize,
 }
 
+/// A node in the frontmatter graph with field data.
+#[derive(Debug, Clone, Serialize)]
+pub struct FrontmatterNode {
+    /// The file path of this node.
+    pub id: String,
+    /// Frontmatter fields to include in output.
+    pub fields: serde_json::Value,
+}
+
+/// An edge in the frontmatter graph.
+#[derive(Debug, Clone, Serialize)]
+pub struct FrontmatterEdge {
+    /// The source file path.
+    pub source: String,
+    /// The target file path.
+    pub target: String,
+    /// The shared value (for shared relations) or null (for ref relations).
+    pub value: Option<String>,
+}
+
+/// Result of building a frontmatter graph.
+#[derive(Debug, Clone, Serialize)]
+pub struct FrontmatterGraph {
+    /// Metadata about the graph.
+    pub meta: FrontmatterGraphMeta,
+    /// Nodes in the graph.
+    pub nodes: Vec<FrontmatterNode>,
+    /// Edges between nodes.
+    pub edges: Vec<FrontmatterEdge>,
+}
+
+/// Metadata about a frontmatter graph.
+#[derive(Debug, Clone, Serialize)]
+pub struct FrontmatterGraphMeta {
+    /// Total number of nodes.
+    pub nodes: usize,
+    /// Total number of edges.
+    pub edges: usize,
+    /// The field used to build relations.
+    pub field: String,
+    /// The relation type used.
+    pub relation: String,
+}
+
 /// Extract all links from markdown content.
 ///
 /// Parses both wiki-style links (`[[Page]]`) and markdown-style links (`[text](url)`).
@@ -412,6 +456,179 @@ pub fn collect_edges(files_with_links: &[(String, Vec<Link>)]) -> Vec<GraphEdge>
     }
 
     edges
+}
+
+/// Build a frontmatter-based graph from markdown files.
+///
+/// # Arguments
+/// * `files` - List of file paths to process
+/// * `field` - Frontmatter field name to build relations from
+/// * `relation` - Relation type: "shared" (group by shared values) or "ref" (direct file references)
+/// * `include_fields` - Additional frontmatter fields to include in node output
+///
+/// # Returns
+/// A FrontmatterGraph with nodes, edges, and metadata
+pub fn build_frontmatter_graph(
+    files: &[String],
+    field: &str,
+    relation: &str,
+    include_fields: &[String],
+) -> FrontmatterGraph {
+    use crate::frontmatter;
+    use std::collections::{HashMap, HashSet};
+
+    let mut nodes: Vec<FrontmatterNode> = Vec::new();
+    let mut edges: Vec<FrontmatterEdge> = Vec::new();
+
+    // Parse frontmatter from all files
+    let mut file_field_values: HashMap<String, Vec<String>> = HashMap::new();
+    let mut file_frontmatter: HashMap<String, Option<frontmatter::FrontmatterData>> = HashMap::new();
+
+    for file_path in files {
+        if let Ok(content) = std::fs::read_to_string(file_path) {
+            let fm_data = frontmatter::parse_frontmatter(&content);
+            file_frontmatter.insert(file_path.clone(), fm_data.clone());
+
+            if let Some(ref fm) = fm_data {
+                if let Some(field_obj) = frontmatter::get_field(fm, field) {
+                    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&field_obj.value_json) {
+                        let values = extract_string_values(&value);
+                        file_field_values.insert(file_path.clone(), values);
+                    }
+                }
+            }
+        }
+    }
+
+    // Build nodes with included fields
+    let include_fields_set: HashSet<&String> = include_fields.iter().collect();
+    for file_path in files {
+        let mut fields_map = serde_json::Map::new();
+
+        if let Some(Some(ref fm)) = file_frontmatter.get(file_path) {
+            for f in &fm.fields {
+                if include_fields_set.is_empty() || include_fields_set.contains(&f.key) {
+                    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&f.value_json) {
+                        fields_map.insert(f.key.clone(), value);
+                    }
+                }
+            }
+        }
+
+        nodes.push(FrontmatterNode {
+            id: file_path.clone(),
+            fields: serde_json::Value::Object(fields_map),
+        });
+    }
+
+    // Build edges based on relation type
+    match relation {
+        "shared" => {
+            // Group files by shared field values
+            let mut value_to_files: HashMap<String, Vec<String>> = HashMap::new();
+
+            for (file_path, values) in &file_field_values {
+                for value in values {
+                    value_to_files.entry(value.clone()).or_default().push(file_path.clone());
+                }
+            }
+
+            // Create edges between files sharing values
+            let mut seen_edges: HashSet<(String, String, String)> = HashSet::new();
+            for (_value, files_with_value) in &value_to_files {
+                if files_with_value.len() > 1 {
+                    for (i, source) in files_with_value.iter().enumerate() {
+                        for target in files_with_value.iter().skip(i + 1) {
+                            let edge_key = (source.clone(), target.clone(), _value.clone());
+                            let edge_key_rev = (target.clone(), source.clone(), _value.clone());
+
+                            if !seen_edges.contains(&edge_key) && !seen_edges.contains(&edge_key_rev) {
+                                edges.push(FrontmatterEdge {
+                                    source: source.clone(),
+                                    target: target.clone(),
+                                    value: Some(_value.clone()),
+                                });
+                                seen_edges.insert(edge_key);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        "ref" => {
+            // Field values point to other files
+            let known_files_set: HashSet<&String> = files.iter().collect();
+
+            for (source_file, values) in &file_field_values {
+                for target_ref in values {
+                    // Try to resolve the reference to a known file
+                    if let Some(resolved) = resolve_file_reference(target_ref, files) {
+                        if known_files_set.contains(&resolved) && resolved != *source_file {
+                            edges.push(FrontmatterEdge {
+                                source: source_file.clone(),
+                                target: resolved,
+                                value: None,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+
+    let meta = FrontmatterGraphMeta {
+        nodes: nodes.len(),
+        edges: edges.len(),
+        field: field.to_string(),
+        relation: relation.to_string(),
+    };
+
+    FrontmatterGraph { meta, nodes, edges }
+}
+
+/// Extract string values from a JSON value (handles strings and arrays of strings).
+fn extract_string_values(value: &serde_json::Value) -> Vec<String> {
+    match value {
+        serde_json::Value::String(s) => vec![s.clone()],
+        serde_json::Value::Array(arr) => arr
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect(),
+        _ => vec![],
+    }
+}
+
+/// Resolve a file reference to an actual file path.
+fn resolve_file_reference(reference: &str, known_files: &[String]) -> Option<String> {
+    // Exact match
+    if let Some(found) = known_files.iter().find(|f| *f == reference) {
+        return Some(found.clone());
+    }
+
+    // Try without .md extension
+    let without_ext = reference.trim_end_matches(".md");
+    if let Some(found) = known_files.iter().find(|f| f.trim_end_matches(".md") == without_ext) {
+        return Some(found.clone());
+    }
+
+    // Try with .md extension
+    let with_ext = format!("{}.md", reference.trim_end_matches(".md"));
+    if let Some(found) = known_files.iter().find(|f| f.as_str() == with_ext.as_str()) {
+        return Some(found.clone());
+    }
+
+    // Try basename match
+    let basename = reference.rsplit('/').next().unwrap_or(reference);
+    let basename_without_ext = basename.trim_end_matches(".md");
+    for file in known_files {
+        let file_basename = file.rsplit('/').next().unwrap_or(file);
+        if file_basename.trim_end_matches(".md") == basename_without_ext {
+            return Some(file.clone());
+        }
+    }
+
+    None
 }
 
 #[cfg(test)]

@@ -871,6 +871,62 @@ impl FrontmatterEntry {
 }
 
 // ---------------------------------------------------------------------------
+// Frontmatter query output
+// ---------------------------------------------------------------------------
+
+/// Frontmatter query entry for a single file.
+#[derive(Serialize)]
+pub struct FrontmatterQueryEntry {
+    pub file: String,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    pub fields: HashMap<String, Value>,
+}
+
+impl FrontmatterQueryEntry {
+    /// Format frontmatter query entry in raw mode.
+    pub fn format_raw(&self) -> String {
+        let mut parts = vec![self.file.clone()];
+        for (key, value) in &self.fields {
+            let value_str = match value {
+                Value::String(s) => s.clone(),
+                Value::Number(n) => n.to_string(),
+                Value::Bool(b) => b.to_string(),
+                Value::Null => "null".to_string(),
+                Value::Array(arr) => {
+                    let items: Vec<String> = arr.iter().map(|v| {
+                        match v {
+                            Value::String(s) => format!("\"{}\"", s),
+                            _ => v.to_string(),
+                        }
+                    }).collect();
+                    format!("[{}]", items.join(", "))
+                }
+                Value::Object(obj) => {
+                    let items: Vec<String> = obj.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
+                    format!("{{{}}}", items.join(", "))
+                }
+            };
+            parts.push(format!("{}={}", key, value_str));
+        }
+        parts.join(" ")
+    }
+}
+
+/// Metadata for frontmatter query results.
+#[derive(Serialize)]
+pub struct FrontmatterQueryMeta {
+    pub total: usize,
+    pub field: String,
+}
+
+/// Frontmatter query response envelope.
+#[derive(Serialize)]
+pub struct FrontmatterQueryEnvelope {
+    pub meta: FrontmatterQueryMeta,
+    pub results: Vec<FrontmatterQueryEntry>,
+}
+
+// ---------------------------------------------------------------------------
 // Read output
 // ---------------------------------------------------------------------------
 
