@@ -473,6 +473,7 @@ pub fn build_frontmatter_graph(
     field: &str,
     relation: &str,
     include_fields: &[String],
+    order_by: Option<&str>,
 ) -> FrontmatterGraph {
     use crate::frontmatter;
     use std::collections::{HashMap, HashSet};
@@ -575,6 +576,24 @@ pub fn build_frontmatter_graph(
             }
         }
         _ => {}
+    }
+
+    // Sort nodes
+    if let Some(order_field) = order_by {
+        nodes.sort_by(|a, b| {
+            let va = a.fields.get(order_field).unwrap_or(&serde_json::Value::Null);
+            let vb = b.fields.get(order_field).unwrap_or(&serde_json::Value::Null);
+            let sa = match va { serde_json::Value::String(s) => s.clone(), serde_json::Value::Number(n) => n.to_string(), _ => String::new() };
+            let sb = match vb { serde_json::Value::String(s) => s.clone(), serde_json::Value::Number(n) => n.to_string(), _ => String::new() };
+            // Try numeric comparison first
+            if let (Ok(na), Ok(nb)) = (sa.parse::<f64>(), sb.parse::<f64>()) {
+                na.partial_cmp(&nb).unwrap_or(std::cmp::Ordering::Equal)
+            } else {
+                sa.cmp(&sb)
+            }
+        });
+    } else {
+        nodes.sort_by(|a, b| a.id.cmp(&b.id));
     }
 
     let meta = FrontmatterGraphMeta {

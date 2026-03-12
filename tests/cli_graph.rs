@@ -368,3 +368,80 @@ fn graph_frontmatter_empty_files() {
     assert_eq!(json["meta"]["nodes"], 0);
     assert_eq!(json["meta"]["edges"], 0);
 }
+
+#[test]
+fn graph_frontmatter_order_by() {
+    let dir = tempdir().unwrap();
+
+    fs::write(
+        dir.path().join("c.md"),
+        "---\ntags: [rust]\nsequence: 3\ntitle: Third\n---\n# C\n",
+    ).unwrap();
+
+    fs::write(
+        dir.path().join("a.md"),
+        "---\ntags: [rust]\nsequence: 1\ntitle: First\n---\n# A\n",
+    ).unwrap();
+
+    fs::write(
+        dir.path().join("b.md"),
+        "---\ntags: [rust]\nsequence: 2\ntitle: Second\n---\n# B\n",
+    ).unwrap();
+
+    // Order by numeric field
+    let output = cmd()
+        .args([
+            "graph",
+            dir.path().to_str().unwrap(),
+            "--format", "frontmatter",
+            "--field", "tags",
+            "--include", "title",
+            "--order-by", "sequence",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+
+    let nodes = json["nodes"].as_array().unwrap();
+    assert_eq!(nodes.len(), 3);
+    assert_eq!(nodes[0]["fields"]["title"], "First");
+    assert_eq!(nodes[1]["fields"]["title"], "Second");
+    assert_eq!(nodes[2]["fields"]["title"], "Third");
+}
+
+#[test]
+fn graph_frontmatter_order_by_string() {
+    let dir = tempdir().unwrap();
+
+    fs::write(
+        dir.path().join("z.md"),
+        "---\ntags: [a]\ncategory: zebra\n---\n# Z\n",
+    ).unwrap();
+
+    fs::write(
+        dir.path().join("a.md"),
+        "---\ntags: [a]\ncategory: apple\n---\n# A\n",
+    ).unwrap();
+
+    let output = cmd()
+        .args([
+            "graph",
+            dir.path().to_str().unwrap(),
+            "--format", "frontmatter",
+            "--field", "tags",
+            "--order-by", "category",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+
+    let nodes = json["nodes"].as_array().unwrap();
+    assert_eq!(nodes[0]["fields"]["category"], "apple");
+    assert_eq!(nodes[1]["fields"]["category"], "zebra");
+}

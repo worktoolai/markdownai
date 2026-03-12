@@ -1159,11 +1159,19 @@ fn run_graph(
                 Some(cli::GraphRelation::Shared) | None => "shared",
             };
 
-            let include_fields = args.include.as_deref()
+            let mut include_fields: Vec<String> = args.include.as_deref()
                 .map(|s| s.split(',').map(|x| x.trim().to_string()).collect())
                 .unwrap_or_else(|| Vec::new());
 
-            let graph = links::build_frontmatter_graph(&files, field, relation, &include_fields);
+            // Auto-include order_by field so sorting can access it
+            let order_by = args.order_by.as_deref();
+            if let Some(ob) = order_by {
+                if !include_fields.contains(&ob.to_string()) {
+                    include_fields.push(ob.to_string());
+                }
+            }
+
+            let graph = links::build_frontmatter_graph(&files, field, relation, &include_fields, order_by);
 
             if json {
                 println!("{}", output::to_json(&graph, pretty));

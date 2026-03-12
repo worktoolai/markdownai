@@ -403,6 +403,9 @@ pub struct GraphArgs {
     #[arg(long)]
     pub include: Option<String>,
 
+    /// Sort nodes by a frontmatter field value (default: filename)
+    #[arg(long)]
+    pub order_by: Option<String>,
 }
 
 #[derive(Clone, ValueEnum)]
