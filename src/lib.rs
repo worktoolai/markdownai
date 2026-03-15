@@ -11,7 +11,6 @@ pub mod engine;
 pub mod frontmatter;
 pub mod index;
 pub mod links;
-pub mod manipulate;
 pub mod markdown;
 pub mod output;
 pub mod section;

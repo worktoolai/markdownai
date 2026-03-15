@@ -1,4 +1,4 @@
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
 
 const VERSION: &str = env!("GIT_VERSION");
 
@@ -17,11 +17,6 @@ const VERSION: &str = env!("GIT_VERSION");
   links FILE               outgoing links (--broken --resolved)
   backlinks FILE           incoming links
   graph INPUT              link graph (--format adjacency|edges|stats)
-  section-set FILE -s ADDR replace section (-c TEXT | --content-file F | --content -)
-  section-add FILE -t HDR  add section (--after --before --level)
-  section-delete FILE -s ADDR
-  frontmatter-set FILE -k KEY -v VAL
-  renum FILE                renumber heading numbers sequentially
   chars INPUT               Unicode script character statistics
   index PATH               DB management (--status --force --check)
 Flags: --json --max-bytes N --limit N --offset N --count-only --exists --stats
@@ -150,40 +145,6 @@ pub enum Commands {
   graph ./docs --format orphans      # find orphan files
   graph ./docs --start index.md --depth 2"#)]
     Graph(GraphArgs),
-
-    /// Replace section content
-    #[command(name = "section-set", after_help = r####"  section-set doc.md -s "#1.1" -c "New content"
-  echo "content" | section-set doc.md -s "## Setup" --content -"####)]
-    SectionSet(SectionSetArgs),
-
-    /// Replace entire section (heading + body)
-    #[command(name = "section-replace", after_help = r####"  section-replace doc.md -s "#1.1" -c "## New Title\n\nNew body"
-  section-replace doc.md -s "## Old" --content-file new_section.md"####)]
-    SectionReplace(SectionReplaceArgs),
-
-    /// Write content to file
-    #[command(name = "write")]
-    Write(WriteArgs),
-
-    /// Add new section
-    #[command(name = "section-add", after_help = r####"  section-add doc.md -t "## New Section" -c "Content"
-  section-add doc.md -t "### Sub" --after "#1.1""####)]
-    SectionAdd(SectionAddArgs),
-
-    /// Delete section
-    #[command(name = "section-delete", after_help = r####"  section-delete doc.md -s "#1.1"
-  section-delete doc.md -s "## Old Section""####)]
-    SectionDelete(SectionDeleteArgs),
-
-    /// Set frontmatter field
-    #[command(name = "frontmatter-set", after_help = r#"  frontmatter-set doc.md -k tags -v '["rust","cli"]'
-  frontmatter-set doc.md -k draft -v true"#)]
-    FrontmatterSet(FrontmatterSetArgs),
-
-    /// Renumber heading numbers sequentially
-    #[command(after_help = r#"  renum doc.md                       # renumber all
-  renum doc.md --dry-run             # preview changes"#)]
-    Renum(RenumArgs),
 
     /// Unicode script character statistics
     #[command(after_help = r#"  chars doc.md                       # single file
@@ -396,187 +357,6 @@ pub enum GraphFormat {
     Stats,
     /// Files with no incoming links
     Orphans,
-}
-
-// ---------- section-set ----------
-#[derive(Parser)]
-pub struct SectionSetArgs {
-    /// File path
-    pub file: String,
-
-    /// Section address
-    #[arg(short, long)]
-    pub section: String,
-
-    /// Inline content
-    #[arg(short, long)]
-    pub content: Option<String>,
-
-    /// Content from file
-    #[arg(long)]
-    pub content_file: Option<String>,
-
-    /// Dry run (show changes, no write)
-    #[arg(long)]
-    pub dry_run: bool,
-
-    /// Write to different file
-    #[arg(long)]
-    pub output: Option<String>,
-
-    /// Include updated toc in response
-    #[arg(long)]
-    pub with_toc: bool,
-}
-
-// ---------- section-replace ----------
-#[derive(Parser)]
-pub struct SectionReplaceArgs {
-    /// File path
-    pub file: String,
-
-    /// Section address to replace
-    #[arg(short, long)]
-    pub section: String,
-
-    /// Inline content (must start with heading)
-    #[arg(short, long)]
-    pub content: Option<String>,
-
-    /// Content from file
-    #[arg(long)]
-    pub content_file: Option<String>,
-
-    /// Dry run (show changes, no write)
-    #[arg(long)]
-    pub dry_run: bool,
-
-    /// Write to different file
-    #[arg(long)]
-    pub output: Option<String>,
-
-    /// Include updated toc in response
-    #[arg(long)]
-    pub with_toc: bool,
-}
-
-// ---------- write ----------
-#[derive(Args)]
-#[command(name = "write")]
-pub struct WriteArgs {
-    /// Target file path
-    pub file: String,
-
-    /// Inline content
-    #[arg(short, long)]
-    pub content: Option<String>,
-
-    /// Read content from file (use - for stdin)
-    #[arg(long)]
-    pub content_file: Option<String>,
-
-    /// Preview without writing
-    #[arg(long)]
-    pub dry_run: bool,
-}
-
-// ---------- section-add ----------
-#[derive(Parser)]
-pub struct SectionAddArgs {
-    /// File path
-    pub file: String,
-
-    /// Section title (e.g., "## New Section")
-    #[arg(short, long)]
-    pub title: String,
-
-    /// Inline content
-    #[arg(short, long)]
-    pub content: Option<String>,
-
-    /// Content from file
-    #[arg(long)]
-    pub content_file: Option<String>,
-
-    /// Insert after this section address
-    #[arg(long)]
-    pub after: Option<String>,
-
-    /// Insert before this section address
-    #[arg(long)]
-    pub before: Option<String>,
-
-    /// Heading level (1-6)
-    #[arg(long)]
-    pub level: Option<u8>,
-
-    #[arg(long)]
-    pub dry_run: bool,
-
-    #[arg(long)]
-    pub output: Option<String>,
-
-    #[arg(long)]
-    pub with_toc: bool,
-}
-
-// ---------- section-delete ----------
-#[derive(Parser)]
-pub struct SectionDeleteArgs {
-    /// File path
-    pub file: String,
-
-    /// Section address to delete
-    #[arg(short, long)]
-    pub section: String,
-
-    #[arg(long)]
-    pub dry_run: bool,
-
-    #[arg(long)]
-    pub output: Option<String>,
-
-    #[arg(long)]
-    pub with_toc: bool,
-}
-
-// ---------- frontmatter-set ----------
-#[derive(Parser)]
-pub struct FrontmatterSetArgs {
-    /// File path
-    pub file: String,
-
-    /// Key name
-    #[arg(short, long)]
-    pub key: String,
-
-    /// Value (JSON or plain text)
-    #[arg(short, long)]
-    pub value: String,
-
-    #[arg(long)]
-    pub dry_run: bool,
-
-    #[arg(long)]
-    pub output: Option<String>,
-
-    #[arg(long)]
-    pub with_toc: bool,
-}
-
-// ---------- renum ----------
-#[derive(Parser)]
-pub struct RenumArgs {
-    /// File path
-    pub file: String,
-
-    /// Dry run (show changes, no write)
-    #[arg(long)]
-    pub dry_run: bool,
-
-    /// Write to different file
-    #[arg(long)]
-    pub output: Option<String>,
 }
 
 // ---------- chars ----------
