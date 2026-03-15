@@ -3,7 +3,6 @@ mod engine;
 mod frontmatter;
 mod index;
 mod links;
-mod manipulate;
 mod markdown;
 mod output;
 mod section;
@@ -55,13 +54,6 @@ fn run(cli: Cli) -> Result<i32> {
         Commands::Links(args) => run_links(&args, json, pretty, limit, offset, count_only, exists),
         Commands::Backlinks(args) => run_backlinks(&args, json, pretty, limit, offset, count_only),
         Commands::Graph(args) => run_graph(&args, json, pretty, limit, offset),
-        Commands::SectionSet(args) => run_section_set(&args),
-        Commands::SectionReplace(args) => run_section_replace(&args),
-        Commands::Write(args) => run_write(&args),
-        Commands::SectionAdd(args) => run_section_add(&args),
-        Commands::SectionDelete(args) => run_section_delete(&args),
-        Commands::FrontmatterSet(args) => run_frontmatter_set(&args),
-        Commands::Renum(args) => run_renum(&args),
         Commands::Chars(args) => run_chars(&args, json, pretty),
         Commands::Index(args) => run_index(&args, json, pretty),
         Commands::FrontmatterQuery(args) => run_frontmatter_query(&args, json, pretty, limit, offset, count_only),
@@ -501,7 +493,8 @@ fn walk_entries_respecting_gitignore(root: &Path) -> Result<Vec<ignore::DirEntry
         .git_global(true)
         .git_exclude(true)
         .parents(true)
-        .require_git(false);
+        .require_git(false)
+        .add_custom_ignore_filename(".claudeignore");
 
     for entry in builder.build() {
         let entry = entry.with_context(|| format!("Failed to walk {}", root.display()))?;
@@ -1146,96 +1139,6 @@ fn run_graph(
             }
         }
     }
-
-    Ok(0)
-}
-
-fn run_write(args: &cli::WriteArgs) -> Result<i32> {
-    let content = manipulate::read_content_input(
-        args.content.as_deref(),
-        args.content_file.as_deref(),
-    )?;
-
-    if args.dry_run {
-        println!("{}", content);
-        return Ok(0);
-    }
-
-    if let Some(parent) = std::path::Path::new(&args.file).parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)?;
-        }
-    }
-
-    std::fs::write(&args.file, &content)?;
-    Ok(0)
-}
-
-fn run_section_replace(args: &cli::SectionReplaceArgs) -> Result<i32> {
-    let content = manipulate::read_content_input(
-        args.content.as_deref(),
-        args.content_file.as_deref(),
-    )?;
-
-    manipulate::section_replace(
-        &args.file, &args.section, &content,
-        args.output.as_deref(), args.dry_run,
-    )?;
-
-    Ok(0)
-}
-
-fn run_section_set(args: &cli::SectionSetArgs) -> Result<i32> {
-    let content = manipulate::read_content_input(
-        args.content.as_deref(),
-        args.content_file.as_deref(),
-    )?;
-
-    manipulate::section_set(
-        &args.file, &args.section, &content,
-        args.output.as_deref(), args.dry_run,
-    )?;
-
-    Ok(0)
-}
-
-fn run_section_add(args: &cli::SectionAddArgs) -> Result<i32> {
-    let content = manipulate::read_content_input(
-        args.content.as_deref(),
-        args.content_file.as_deref(),
-    ).unwrap_or_default();
-
-    manipulate::section_add(
-        &args.file, &args.title, &content,
-        args.after.as_deref(), args.before.as_deref(),
-        args.level, args.output.as_deref(), args.dry_run,
-    )?;
-
-    Ok(0)
-}
-
-fn run_section_delete(args: &cli::SectionDeleteArgs) -> Result<i32> {
-    manipulate::section_delete(
-        &args.file, &args.section,
-        args.output.as_deref(), args.dry_run,
-    )?;
-
-    Ok(0)
-}
-
-fn run_frontmatter_set(args: &cli::FrontmatterSetArgs) -> Result<i32> {
-    manipulate::frontmatter_set(
-        &args.file, &args.key, &args.value,
-        args.output.as_deref(), args.dry_run,
-    )?;
-
-    Ok(0)
-}
-
-fn run_renum(args: &cli::RenumArgs) -> Result<i32> {
-    manipulate::renum(
-        &args.file, args.output.as_deref(), args.dry_run,
-    )?;
 
     Ok(0)
 }
